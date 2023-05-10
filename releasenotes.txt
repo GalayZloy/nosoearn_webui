@@ -1,3 +1,0 @@
-v2.1
-
-- Minor fix on custom pools.

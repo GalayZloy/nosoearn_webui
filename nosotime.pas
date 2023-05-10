@@ -76,7 +76,9 @@ end;
 
 function TimestampToDate(timestamp:int64):String;
 begin
-result := DateTimeToStr(UnixToDateTime(TimeStamp));
+  FormatSettings.ShortDateFormat := 'dd/mm/yyyy';
+  FormatSettings.LongTimeFormat := 'hh:mm:ss';
+  result := DateTimeToStr(UnixToDateTime(TimeStamp, false), FormatSettings);
 end;
 
 Function GetTimeOffset(NTPServers:String):int64;

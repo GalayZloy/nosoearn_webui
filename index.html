@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+    <title>NosoEarn WebUI</title>
+    <style type="text/css">
+
+      body {
+        background-color: #111417;
+        font-family: Arial, Helvetica, sans-serif;
+        font-size: 12px;
+        color: #b6b9bc;
+        padding: 0;
+        margin: 0;
+      }
+
+      .content {
+        width: 800px;
+        margin: 0 auto;
+        display: flex;
+        justify-content: center;
+      }
+
+      .title {
+        font-size: 16px;
+        color: #F6C90E;
+        font-weight: bold;
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        font-size: 12px;
+        color: #637682;
+        white-space: nowrap;
+        margin: 0 0 10px 0;
+      }
+
+      .level {
+        display: flex;
+        justify-content: center;
+      }
+
+      .space {
+        width: 20px;
+        height: 20px;
+      }
+
+      .wallet {
+        width: 70%;
+        margin: 0 10px 0 0;
+      }
+
+      .blockchain {
+        width: 30%;
+        margin: 0 0 0 10px;
+      }
+
+      .pool {
+        width: 100%;
+      }
+
+      #address {
+        color: #d5ac4e;
+      }
+
+      #balance {
+        color: #d5ac4e;
+      }
+
+      .wrap {
+        width: auto;
+      }
+
+      .status {
+        width: 100%;
+      }
+
+      .log {
+        width: 100%;
+      }
+
+      textarea {
+        background-color: #303841;
+        width: 100%;
+        max-width: 800px;
+        height: 200px;
+        border: 1px solid #3A4750;
+        padding: 6px 6px 6px 6px;
+        margin: 20px 0 0 0;
+        display: none;
+        color: #b6b9bc;
+      }
+
+      strong {
+      	font-weight: bold;
+        color: #637682;
+      }
+
+      table {
+        background-color: #303841;
+        border-collapse: collapse;
+        text-align: left;
+      }
+
+      table tr td {
+        border: 1px solid #3A4750;
+        empty-cells: show;
+        white-space: nowrap;
+        overflow: hidden;
+        padding: 6px 24px 6px 6px;
+      }
+
+      td.fixed {
+        width: auto;
+      }
+
+      td.auto {
+        width: 100%;
+      }
+
+      tr:hover {
+        background-color: #46515E;
+      }
+
+      .donate {
+        border-top-style: solid;
+        border-width: 1px;
+        border-color: #3A4750;
+        color: #3A4750;
+        width: 100%;
+        text-align: center;
+      }
+
+      .donate b:hover {
+        color: #F6C90E;
+      }
+
+      .info {
+        color: #b6b9bc;
+      }
+
+      .error {
+        font-weight: bold;
+        color: #d81159;
+      }
+
+  	</style>
+
+    <script type="text/javascript">
+      var inteval = 1000;
+
+      function update(xmlHttp) {
+        xmlHttp.open('GET', '/update', true);
+        xmlHttp.send(null);
+        setTimeout(update, inteval, xmlHttp);
+      }
+
+      function start() {
+        var idBalance = document.getElementById("balance");
+        var idPayments = document.getElementById("payments");
+        var idReceived = document.getElementById("received");
+        var idUptime = document.getElementById("uptime");
+        var idNow = document.getElementById("now");
+        var idBlock = document.getElementById("block");
+        var idAge = document.getElementById("age");
+        var idSpeed = document.getElementById("speed");
+        var idSum = document.getElementById("sum");
+        var idMsgStatus = document.getElementById("msgStatus");
+        var idMsgLog = document.getElementById("msgLog");
+
+        let i = 0;
+        var arrPools = [];
+        while (document.getElementById("pool" + i) != null) {
+          arrPools.push({
+            pool: document.getElementById("pool" + i),
+            miners: document.getElementById("miners" + i),
+            fee: document.getElementById("fee" + i),
+            balance: document.getElementById("balance" + i),
+            pay: document.getElementById("pay" + i),
+            shares: document.getElementById("shares" + i)
+          });
+          i++;
+        }
+
+        if (!window.XMLHttpRequest) {
+          idMsgStatus.innerHTML = "Error: Cannot create an XMLHTTP instance.";
+          idMsgStatus.className = "error";
+          return;
+        }
+
+        var xmlHttp = new XMLHttpRequest();
+
+        if (!xmlHttp ) {
+          idMsgStatus.innerHTML = "Error: Cannot create an XMLHTTP instance.";
+          idMsgStatus.className = "error";
+          return;
+        }
+
+        xmlHttp.timeout = 5000;
+        xmlHttp.ontimeout = timeout;
+        xmlHttp.onreadystatechange = stateChanged;
+
+        function timeout() {
+          idMsgStatus.innerHTML = "Error: Request timed out.";
+          idMsgStatus.className = "error";
+        }
+
+        function stateChanged() {
+        if (xmlHttp.readyState==4) {
+          if (xmlHttp.status==200) {
+            try {
+              var respJson = window.JSON.parse(xmlHttp.responseText);
+              if (respJson.msg == "ERROR") {
+                idMsgStatus.innerHTML = "Error: Interal error. " + xmlHttp.status + " " + xmlHttp.statusText;
+                idMsgStatus.className = "error";
+              }
+              else {
+                idBalance.innerHTML = respJson.payments;
+                idPayments.innerHTML = respJson.payments;
+                idReceived.innerHTML = respJson.received;
+                idUptime.innerHTML = respJson.uptime;
+                idNow.innerHTML = respJson.now;
+                idBlock.innerHTML = respJson.block;
+                idAge.innerHTML = respJson.age;
+                idSpeed.innerHTML = respJson.speed;
+                idSum.innerHTML = respJson.sum;
+                idMsgStatus.innerHTML = respJson.msgStatus;
+                idMsgStatus.className = "info";
+                idMsgLog.innerHTML = respJson.msgLog;
+
+                for (let j = 0; j < arrPools.length; j++) {
+                  arrPools[j].pool.innerHTML = respJson["pool" + j];
+                  arrPools[j].miners.innerHTML = respJson["miners" + j];
+                  arrPools[j].fee.innerHTML = respJson["fee" + j];
+                  arrPools[j].balance.innerHTML = respJson["balance" + j];
+                  arrPools[j].pay.innerHTML = respJson["pay" + j];
+                  arrPools[j].shares.innerHTML = respJson["shares" + j];
+                }
+              }
+            }
+            catch (e) {
+              idMsgStatus.innerHTML = "Error: Interal error. " + xmlHttp.status + " " + xmlHttp.statusText;
+              idMsgStatus.className = "error";
+            }
+          }
+          else {
+            idMsgStatus.innerHTML = "Error: Interal error. " + xmlHttp.status + " " + xmlHttp.statusText;
+            idMsgStatus.className = "error";
+            }
+          }
+        }
+        update(xmlHttp);
+      }
+
+      window.onload = start;
+    </script>
+  </head>
+  <body>
+    <div class="content">
+      <div class="wrap">
+        <div class="level">
+          <div class="space"></div>
+        </div>
+        <div class="level">
+          <div class="title">NosoEarn WebUI</div>
+        </div>
+        <div class="level">
+          <div class="subtitle" id="appver">based on NosoEarn v%appver%</div>
+        </div>
+        <div class="level">
+          <table class="wallet">
+            <tbody>
+              <tr>
+                <td class="fixed"><strong>Address:</strong></td>
+                <td class="auto" id="address">%address%</td>
+              </tr>
+              <tr>
+                <td class="fixed"><strong>Balance:</strong></td>
+                <td class="auto" id="balance">-</td>
+              </tr>
+              <tr>
+                <td class="fixed"><strong>Payments:</strong></td>
+                <td class="auto" id="payments">-</td>
+              </tr>
+              <tr>
+                <td class="fixed"><strong>Received:</strong></td>
+                <td class="auto" id="received">-</td>
+              </tr>
+              <tr>
+                <td class="fixed"><strong>Uptime:</strong></td>
+                <td class="auto" id="uptime">-</td>
+              </tr>
+              <tr>
+                <td class="fixed"><strong>Now:</strong></td>
+                <td class="auto" id="now">-</td>
+              </tr>
+            </tbody>
+          </table>
+          <table class="blockchain">
+            <tbody>
+              <tr>
+                <td class="fixed"><strong>Block:</strong></td>
+                <td class="auto" id="block">-</td>
+              </tr>
+              <tr>
+                <td class="fixed"><strong>Age:</strong></td>
+                <td class="auto" id="age">-</td>
+              </tr>
+              <tr>
+                <td class="fixed"><strong>Speed:</strong></td>
+                <td class="auto" id="speed">-</td>
+              </tr>
+              <tr>
+                <td class="fixed"><strong>CPUs:</strong></td>
+                <td class="auto" id="cpu">%cpus%</td>
+              </tr>
+              <tr>
+                <td class="fixed"><strong>Library:</strong></td>
+                <td class="auto" id="library">%library%</td>
+              </tr>
+              <tr>
+                <td class="fixed"><strong>Donation:</strong></td>
+                <td class="auto" id="donation">%donation%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="level">
+          <div class="space"></div>
+        </div>
+        <div class="level">
+          <table class="pool">
+            <tbody>
+              <tr>
+                <td><strong>Pool</strong></td>
+                <td><strong>Miners</strong></td>
+                <td><strong>Fee</strong></td>
+                <td><strong>Balance</strong></td>
+                <td><strong>Pay</strong></td>
+                <td><strong>Shares</strong></td>
+              </tr>
+              %pools%
+              <tr>
+                <td><br></td>
+                <td><br></td>
+                <td><br></td>
+                <td id="sum">-</td>
+                <td><br></td>
+                <td><br></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="level">
+          <div class="space"></div>
+        </div>
+        <div class="level">
+          <table class="status">
+            <tbody>
+              <tr>
+                <td id="msgStatus" class="info">WebUI initialized</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="level">
+          <div class="space"></div>
+        </div>
+        <div class="level">
+          <table class="log">
+            <tbody>
+              <tr>
+                <td id="msgLog">...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="level">
+          <textarea readonly id="logFile" name="logFile">
+            Log file
+          </textarea>
+        </div>
+        <div class="level">
+          <div class="space"></div>
+        </div>
+        <div class="level">
+          <div class="donate">If you would like to support this fork, please
+            donate to: <b>N2pHrst9VokBRdF4hCbhisn1vwNEvGC</b></div>
+        </div>
+      </div>
+    </div>
+    <script>
+      var idAddress = document.getElementById("address");
+      var strAddress = idAddress.innerHTML;
+      var idLogFile = document.getElementById("logFile");
+      var idMsgLog = document.getElementById("msgLog");
+      idAddress.onclick = showAddress;
+      idMsgLog.onclick = showLog;
+
+      function showAddress() {
+        if (idAddress.innerHTML == strAddress) {
+          idAddress.innerHTML = "##############################";
+        }
+        else {
+          idAddress.innerHTML = strAddress;
+        }
+      }
+
+      function showLog() {
+        if (idLogFile.style.display === "none" || idLogFile.style.display === "") {
+          let xmlLogFile = new XMLHttpRequest();
+          let responseText = "";
+
+          xmlLogFile.onload = function() {
+            if (xmlLogFile.status === 200) {
+              responseText = xmlLogFile.responseText;
+            } else {
+              responseText = "Can't load log file.";
+            }
+            idLogFile.value = responseText;
+          };
+
+          xmlLogFile.open('GET', '/logfile', false);
+          xmlLogFile.send();
+
+          idLogFile.style.display = "initial";
+        }
+        else {
+          idLogFile.style.display = "none";
+        }
+      }
+    </script>
+  </body>
+</html>

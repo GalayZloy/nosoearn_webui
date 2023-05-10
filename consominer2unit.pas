@@ -2,10 +2,14 @@ unit consominer2unit;
 
 {$mode ObjFPC}{$H+}
 
+{$codepage UTF8}
+
 interface
 
 uses
-  Classes, SysUtils, IdTCPClient, IdGlobal, strutils, functions, nosotime;
+  Classes, SysUtils, strutils,
+  IdTCPClient, IdGlobal, IdException, UTF8Process,
+  functions, nosotime;
 
 Type
 
@@ -36,6 +40,10 @@ Type
      Diff   : string;
      end;
 
+   TMsgType = Packed Record
+     info: String;
+     error: String;
+   end;
 
 Procedure LoadSources();
 Function GetPoolInfo(PoolIp:String;PoolPort:integer):String;
@@ -47,7 +55,7 @@ Procedure FillAllPools();
 Procedure ClearAllPools();
 Function GetTotalPending():Int64;
 Procedure SaveSource(LSource:TSourcesData);
-Procedure SetStatusMsg(Lmessage:string;Lcolor:integer);
+Procedure SetStatusMsg(StatusMsg: String; TypeMsg: String);
 // Disk access
 Procedure CreateConfig(ByDefault : boolean = false);
 Procedure LoadConfig();
@@ -76,18 +84,24 @@ Procedure DecreaseOMT();
 Function GetOMTValue():Integer;
 
 Const
-  AppVer            = '2.2';
-  ReleaseDate       = 'Apr 28, 2023';
+  AppVer            = '2.1';
+  ReleaseDate       = 'Apr 15, 2023';
   HasheableChars    = '!"#$%&'#39')*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~';
   DeveloperAddress  = 'N3VXG1swUP3n46wUSY5yQmqQiHoaDED';
   NTPServers        = 'ts2.aco.net:hora.roa.es:time.esa.int:time.stdtime.gov.tw:stratum-1.sjc02.svwh.net:ntp1.sp.se:1.de.pool.ntp.org:';
   fpcVersion        = {$I %FPCVERSION%};
   B58Alphabet : string = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 
+  MsgType: TMsgType = (info: 'info'; error: 'error');
+
 var
   ArrSources    : Array of TSourcesData;
   MainThreadIsFinished : boolean = false;
   DefaultSources : string = 'pool.nosofish.xyz:8082 pool.noso-akkarin.com:8082 nosopool.estripa.online:8082 pool.nosomn.com:8082 47.87.181.190:8082';
+
+  strMsgStatus: String;
+  strMsgType: String;
+  strMsgLog: String;
 
   SourcesStr    : string = '';
   ArrLogLines   : array of string;
@@ -97,8 +111,8 @@ var
   CurrSpeed     : integer = 0;
   CurrBlockAge  : integer = 0;
   ActivePool    : integer = 0;
-  StatusMsg     : string = '';
-  StatusColor   : integer;
+  //StatusMsg     : string = '';
+  //StatusColor   : integer;
   TimeOffSet    : integer = 0;
   // Files vars
   FileConfig      : Textfile;
@@ -151,58 +165,59 @@ var
 
 implementation
 
-Function GetPoolInfo(PoolIp:String;PoolPort:integer):String;
-var
+Function GetPoolInfo(PoolIp: String; PoolPort: Integer): String;
+Var
   TCPClient : TidTCPClient;
   ResultLine : String = '';
 Begin
-Result := 'ERROR';
-ResultLine := '';
-TCPClient := TidTCPClient.Create(nil);
-TCPclient.Host:=PoolIp;
-TCPclient.Port:=PoolPort;
-TCPclient.ConnectTimeout:= 3000;
-TCPclient.ReadTimeout:=3000;
-TRY
-TCPclient.Connect;
-TCPclient.IOHandler.WriteLn('POOLINFO');
-ResultLine := TCPclient.IOHandler.ReadLn();
-TCPclient.Disconnect();
-EXCEPT on E:Exception do
-   begin
-   ResultLine := '';
-   end;
-END{try};
-TCPClient.Free;
-if ResultLine <> '' then Result := ResultLine;
+  Result := 'ERROR';
+  ResultLine := '';
+  TCPClient := TidTCPClient.Create(nil);
+  TCPclient.Host := PoolIp;
+  TCPclient.Port := PoolPort;
+  TCPclient.ConnectTimeout := 1000;
+  TCPclient.ReadTimeout := 1000;
+  Try
+    TCPclient.Connect;
+    TCPclient.IOHandler.WriteLn('POOLINFO');
+    ToLog('GetPoolInfo: ' + PoolIp + ':' + PoolPort.ToString);
+    ResultLine := TCPclient.IOHandler.ReadLn();
+    TCPclient.Disconnect();
+  Except
+    on E: EIdConnClosedGracefully do ToLog('Pool closed connection.');
+    on E: Exception do ToLog('Error: ' + E.Message);
+  End;
+  TCPClient.Free;
+  If ResultLine <> '' Then Result := ResultLine;
+  ToLog('Result: ' + Result);
 End;
 
-Function GetPoolSource(Ip:String;Port:integer):String;
-var
-  TCPClient : TidTCPClient;
-  ResultLine : String = '';
+Function GetPoolSource(Ip: String; Port: Integer): String;
+Var
+  TCPClient: TidTCPClient;
+  ResultLine: String = '';
 Begin
-Result := 'ERROR';
-ResultLine := '';
-TCPClient := TidTCPClient.Create(nil);
-TCPclient.Host:=IP;
-TCPclient.Port:=Port;
-TCPclient.ConnectTimeout:= 3000;
-TCPclient.ReadTimeout:=3000;
-TRY
-TCPclient.Connect;
-TCPclient.IOHandler.WriteLn('SOURCE '+MyAddress+' Cm2'+AppVer+' '+HashMD5String(mypassword+Myaddress+TCPclient.Host));
-ResultLine := TCPclient.IOHandler.ReadLn(IndyTextEncoding_UTF8);
-TCPclient.Disconnect();
-EXCEPT on E:Exception do
-   begin
-   end;
-END{try};
-TCPClient.Free;
-if Parameter(ResultLine,0)='OK' then
-   begin
-   Result := ResultLine;
-   end;
+  Result := 'ERROR';
+  ResultLine := '';
+  TCPClient := TidTCPClient.Create(nil);
+  TCPclient.Host:=IP;
+  TCPclient.Port:=Port;
+  TCPclient.ConnectTimeout:= 3000;
+  TCPclient.ReadTimeout:=3000;
+
+  Try
+    TCPclient.Connect;
+    TCPclient.IOHandler.WriteLn('SOURCE ' + MyAddress + ' Cm2' + AppVer + ' ' + HashMD5String(mypassword + Myaddress + TCPclient.Host));
+    ToLog('GetPoolSource: ' + 'SOURCE ' + MyAddress + ' Cm2' + AppVer + ' ' + HashMD5String(mypassword+Myaddress+TCPclient.Host));
+    ResultLine := TCPclient.IOHandler.ReadLn(IndyTextEncoding_UTF8);
+    TCPclient.Disconnect();
+    Except
+      on E: EIdConnClosedGracefully do ToLog('Pool closed connection.');
+      on E: Exception do ToLog('Error: ' + E.Message);
+    End;
+  TCPClient.Free;
+  if Parameter(ResultLine, 0)='OK' then Result := ResultLine;
+  ToLog('Result: ' + Result);
 End;
 
 Procedure SendPoolShare(Data:TSolution);
@@ -246,7 +261,7 @@ if Success then
       begin
       Inc(ArrSources[ActivePool].shares);
       U_ActivePool := true;
-      SetStatusMsg('Submmited share '+ArrSources[ActivePool].shares.ToString+' to '+ArrSources[ActivePool].ip,2{green});
+      SetStatusMsg('Submmited share ' + IntToStr(ArrSources[ActivePool].shares) + ' to ' + ArrSources[ActivePool].ip + ':' + IntToStr(ArrSources[ActivePool].port), MsgType.info);
       if ArrSources[ActivePool].shares >= ArrSources[ActivePool].MaxShares then
          begin
          ArrSources[ActivePool].filled:=true;
@@ -257,7 +272,7 @@ if Success then
       end
    else
       begin
-      SetStatusMsg('Rejected share : '+ResultLine,4{red});
+      SetStatusMsg('Rejected share : ' + ResultLine, 'error');
       Inc(WrongThisPool);
       // Filter here if Shares limit was reached
       If ((AnsiContainsStr(ResultLine,'SHARES_LIMIT')) or ( WrongThisPool = 3)) then
@@ -272,7 +287,7 @@ if Success then
 else // Not send
    begin
    ToLog('Unable to send solution to '+TCPclient.Host);
-   SetStatusMsg('Connection error. Check your internet connection: '+WrongThisPool.ToString,4{red});
+   SetStatusMsg('Connection error. Check your internet connection: ' + WrongThisPool.ToString, 'error');
    Inc(WrongThisPool);
    if WrongThisPool = 3 then
       begin
@@ -290,14 +305,14 @@ var
   Counter : integer = 0;
   AlreadyLoaded : string = '';
 Begin
-SetLEngth(ArrSources,0);
+SetLength(ArrSources,0);
 Repeat
    begin
    ThisSource := Parameter(SourcesStr,counter);
    If ( (ThisSource<> '') and (Not AnsiContainsStr(Uppercase(AlreadyLoaded),Uppercase(ThisSource))) ) then
       begin
       ThisSource := StringReplace(ThisSource,':',' ',[rfReplaceAll, rfIgnoreCase]);
-      SetLEngth(ArrSources,length(ArrSources)+1);
+      SetLength(ArrSources,length(ArrSources)+1);
       ArrSources[length(ArrSources)-1].ip:=Parameter(ThisSource,0);
       ArrSources[length(ArrSources)-1].port:=StrToIntDef(Parameter(ThisSource,1),8082);
       ArrSources[length(ArrSources)-1].filled:=false;
@@ -391,10 +406,10 @@ For counter := 0 to length(ArrSources)-1 do
 LeaveCriticalSection(CS_ArrSources);
 End;
 
-Procedure SetStatusMsg(Lmessage:string;Lcolor:integer);
+Procedure SetStatusMsg(StatusMsg: String; TypeMsg: String);
 Begin
-Statusmsg := Lmessage;
-StatusColor := LColor;
+  strMsgStatus := StatusMsg;
+  strMsgType := TypeMsg;
 End;
 
 Procedure CreateConfig(ByDefault : boolean = false);
@@ -469,24 +484,23 @@ End;
 
 Function CheckSource():integer;
 var
-  ReachedNodes : integer = 0;
-  ThisSource   : TSourcesData;
-  PoolString : String ='';
-  PoolPayStr : string = '';
-  PoolPayData : TPayment;
-  SourceNoso   : Int64;
+  ReachedNodes: integer = 0;
+  ThisSource: TSourcesData;
+  PoolString: String = '';
+  PoolPayStr: String = '';
+  PoolPayData: TPayment;
+  SourceNoso: Int64;
 Begin
 Result := 0;
 Repeat
    Inc(ActivePool);
-   if ActivePool>=length(ArrSources) then ActivePool := 0;
+   if ActivePool >= length(ArrSources) then ActivePool := 0;
 until not ArrSources[ActivePool].filled;
 ThisSource := ArrSources[ActivePool];
-ToLog('Connecting '+ThisSource.ip+' ...');
-PoolString := GetPoolSource(ThisSource.ip,ThisSource.port);
-if PoolString<> 'ERROR' then // Pool reached
+ToLog('CheckSource: ' + ThisSource.ip + ':' + IntToStr(ThisSource.port));
+PoolString := GetPoolSource(ThisSource.ip, ThisSource.port);
+if PoolString <> 'ERROR' then // Pool reached
    begin
-   ToLog(ThisSource.ip+': '+PoolString);
    result := 1;
    MAINPREFIX             := Parameter(PoolString,1);
    PoolMinningAddress     := Parameter(PoolString,2);
@@ -520,7 +534,7 @@ if PoolString<> 'ERROR' then // Pool reached
       end;
    U_TotalPEnding := true;
    SaveSource(ThisSource);
-   SetStatusMsg('Synced with pool '+ThisSource.ip,2{green});
+   SetStatusMsg('Synced with pool ' + ThisSource.ip + ':' + IntToStr(ThisSource.port), 'info');
    end
 else
    begin
@@ -531,7 +545,7 @@ else
       ArrSources[ActivePool].filled:=true;
       result := 2;
       end
-   else SetStatusMsg(format('Failed connecting to %s (%d)',[ThisSource.ip,ArrSources[ActivePool].FailedTrys]),4{red});
+   else SetStatusMsg('Failed connecting to ' + ThisSource.ip + ':' + IntToStr(ThisSource.port) + '(' + IntToStr(ArrSources[ActivePool].FailedTrys) + ')', 'error');
    end;
 End;
 
@@ -643,10 +657,14 @@ END {TRY};
 End;
 
 Procedure Tolog(LLine:String);
+Var
+  t: String;
 Begin
-EnterCriticalSection(CS_Log);
-Insert(LLine,ArrLogLines,Length(ArrLogLines));
-LEaveCriticalSection(CS_Log);
+  t := Concat(FormatDateTime('dd.mm.YYYY HH:MM:SS.zzz', Now), ' > ', LLine);
+  EnterCriticalSection(CS_Log);
+  Insert(t, ArrLogLines, Length(ArrLogLines));
+  LEaveCriticalSection(CS_Log);
+  Writeln(t);
 End;
 
 Procedure CheckLog();
@@ -746,30 +764,34 @@ LeaveCriticalSection(CS_MinerThreads);
 End;
 
 
-INITIALIZATION
-Assignfile(FileConfig, 'nosoearn.cfg');
-Assignfile(FileLog, 'log.txt');
-Assignfile(FilePayments, 'payments.dat');
-Assignfile(FileRAWPayments, 'payments.txt');
+Initialization
+  MaxCPU := {$IFDEF UNIX} GetSystemThreadCount {$ELSE} GetCPUCount {$ENDIF};
 
+  Assignfile(FileConfig, 'nosoearn.cfg');
+  Assignfile(FileLog, 'log.txt');
+  Assignfile(FilePayments, 'payments.dat');
+  Assignfile(FileRAWPayments, 'payments.txt');
 
-ArrHashLibs[0]:=65;ArrHashLibs[1]:=68;ArrHashLibs[2]:=69;ArrHashLibs[3]:=70;
-InitCriticalSection(CS_Log);
-InitCriticalSection(CS_ArrSources);
-InitCriticalSection(CS_Solutions);
-InitCriticalSection(CS_Interval);
-InitCriticalSection(CS_MinerThreads);
+  ArrHashLibs[0]:=65;
+  ArrHashLibs[1]:=68;
+  ArrHashLibs[2]:=69;
+  ArrHashLibs[3]:=70;
 
-SetLength(ArrSolutions,0);
-SetLength(ArrLogLines,0);
+  InitCriticalSection(CS_Log);
+  InitCriticalSection(CS_ArrSources);
+  InitCriticalSection(CS_Solutions);
+  InitCriticalSection(CS_Interval);
+  InitCriticalSection(CS_MinerThreads);
 
+  SetLength(ArrSolutions,0);
+  SetLength(ArrLogLines,0);
 
-FINALIZATION
-DoneCriticalSection(CS_Log);
-DoneCriticalSection(CS_ArrSources);
-DoneCriticalSection(CS_Solutions);
-DoneCriticalSection(CS_Interval);
-DoneCriticalSection(CS_MinerThreads);
+Finalization
+  DoneCriticalSection(CS_Log);
+  DoneCriticalSection(CS_ArrSources);
+  DoneCriticalSection(CS_Solutions);
+  DoneCriticalSection(CS_Interval);
+  DoneCriticalSection(CS_MinerThreads);
 
 END. // END UNIT
 

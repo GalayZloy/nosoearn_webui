@@ -2,6 +2,8 @@ unit functions;
 
 {$mode ObjFPC}{$H+}
 
+{$codepage UTF8}
+
 interface
 
 uses
